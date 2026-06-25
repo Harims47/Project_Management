@@ -120,6 +120,30 @@ export const ProjectFilters = ({
           </select>
         </div>
 
+        {/* Min Revenue */}
+        <div className="flex flex-col gap-1 w-full text-left">
+          <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Min Revenue ($)</label>
+          <input
+            type="number"
+            value={filters.minRevenue || ''}
+            onChange={(e) => handleChange('minRevenue', e.target.value)}
+            placeholder="Min revenue..."
+            className="w-full mt-1 py-2 px-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-brandDark-card text-sm text-gray-905 dark:text-gray-150 outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+          />
+        </div>
+
+        {/* Max Revenue */}
+        <div className="flex flex-col gap-1 w-full text-left">
+          <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Max Revenue ($)</label>
+          <input
+            type="number"
+            value={filters.maxRevenue || ''}
+            onChange={(e) => handleChange('maxRevenue', e.target.value)}
+            placeholder="Max revenue..."
+            className="w-full mt-1 py-2 px-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-brandDark-card text-sm text-gray-905 dark:text-gray-150 outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+          />
+        </div>
+
         {/* Date range - Start */}
         <div className="flex flex-col gap-1 w-full text-left">
           <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Start Date From</label>

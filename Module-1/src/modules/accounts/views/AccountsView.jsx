@@ -7,10 +7,15 @@ import { Modal, ConfirmationDialog } from '../../../components/ui/Modal';
 // Reusable subcomponents
 import AccountsTable from '../components/AccountsTable';
 import AccountDrawer from '../components/AccountDrawer';
+import ImportHistoryPanel from '../components/ImportHistoryPanel';
 
 // Dummy JSON datasets
 import initialAccounts from '../data/accounts';
 import initialProjects from '../data/projects';
+
+// Utility helper routines
+import { filterProjects } from '../utils/helpers/filterUtils';
+import { mapImportedRowsToSchema } from '../utils/helpers/importUtils';
 
 const INITIAL_FILTERS = {
   search: '',
@@ -20,13 +25,20 @@ const INITIAL_FILTERS = {
   manager: '',
   client: '',
   startDate: '',
-  endDate: ''
+  endDate: '',
+  minRevenue: '',
+  maxRevenue: ''
 };
 
 export const AccountsView = () => {
   // Master states
   const [accountsList, setAccountsList] = useState(initialAccounts);
   const [projectsList, setProjectsList] = useState(initialProjects);
+
+  // Phase 2: Import logs and undo buffers
+  const [importHistory, setImportHistory] = useState([]);
+  const [lastImportedProjectIds, setLastImportedProjectIds] = useState(null);
+  const [successBanner, setSuccessBanner] = useState(null);
 
   // Drawer states
   const [selectedAccountId, setSelectedAccountId] = useState(null);
@@ -67,49 +79,62 @@ export const AccountsView = () => {
   }, [projectsList, selectedAccountId]);
 
   const filteredDrawerProjects = useMemo(() => {
-    return selectedAccountProjects.filter(proj => {
-      // 1. Service filter
-      if (drawerFilters.service && proj.service !== drawerFilters.service) return false;
+    return filterProjects(projectsList, drawerFilters, selectedAccountId);
+  }, [projectsList, drawerFilters, selectedAccountId]);
 
-      // 2. Status filter
-      if (drawerFilters.status && proj.status !== drawerFilters.status) return false;
+  // Project Excel Import Handler
+  const handleImportProjects = (validRows, fileName, summary) => {
+    // Map rows to schema objects
+    const mapped = mapImportedRowsToSchema(validRows, selectedAccountId, selectedAccountObj, accountsList);
+    
+    // Add to project list state
+    setProjectsList(prev => [...mapped, ...prev]);
 
-      // 3. Global Search (name, code, manager)
-      if (drawerFilters.search) {
-        const q = drawerFilters.search.toLowerCase();
-        const codeMatch = proj.projectCode.toLowerCase().includes(q);
-        const nameMatch = proj.projectName.toLowerCase().includes(q);
-        const managerMatch = proj.manager.toLowerCase().includes(q);
-        if (!codeMatch && !nameMatch && !managerMatch) return false;
-      }
+    // Store IDs to allow undo action
+    const ids = mapped.map(p => p.id);
+    setLastImportedProjectIds(ids);
 
-      // 4. Multi Project Code Search
-      if (drawerFilters.multiSearch) {
-        const codes = drawerFilters.multiSearch
-          .split(/[\s,\n]+/)
-          .map(c => c.trim().toLowerCase())
-          .filter(Boolean);
-        if (codes.length > 0) {
-          const match = codes.some(code => proj.projectCode.toLowerCase().includes(code));
-          if (!match) return false;
-        }
-      }
+    // Add record to import history logger
+    const newLog = {
+      id: `log-${Date.now()}`,
+      fileName,
+      uploadedDate: new Date().toLocaleString(),
+      totalRecords: summary.totalRecords,
+      validRecords: summary.validRecords,
+      invalidRecords: summary.invalidRecords,
+      status: 'Success'
+    };
+    setImportHistory(prev => [newLog, ...prev]);
 
-      // 5. Manager filter
-      if (drawerFilters.manager && proj.manager !== drawerFilters.manager) return false;
-
-      // 6. Client filter
-      if (drawerFilters.client && proj.clientId !== drawerFilters.client) return false;
-
-      // 7. Date range Start
-      if (drawerFilters.startDate && proj.startDate < drawerFilters.startDate) return false;
-
-      // 8. Date range End
-      if (drawerFilters.endDate && proj.endDate > drawerFilters.endDate) return false;
-
-      return true;
+    // Render success banner
+    setSuccessBanner({
+      message: `Successfully imported ${validRows.length} project records from "${fileName}".`,
+      undoable: true
     });
-  }, [selectedAccountProjects, drawerFilters]);
+  };
+
+  // Undo Import Handler
+  const handleUndoImport = () => {
+    if (lastImportedProjectIds && lastImportedProjectIds.length > 0) {
+      setProjectsList(prev => prev.filter(p => !lastImportedProjectIds.includes(p.id)));
+      
+      // Update first history log status to Undone
+      setImportHistory(prev => 
+        prev.map((log, index) => index === 0 ? { ...log, status: 'Undone' } : log)
+      );
+
+      setLastImportedProjectIds(null);
+      setSuccessBanner({
+        message: 'Import operation rolled back. Projects removed from session state.',
+        undoable: false
+      });
+
+      // Clear banner automatically after 3 seconds
+      setTimeout(() => {
+        setSuccessBanner(null);
+      }, 3000);
+    }
+  };
 
   // -------------------------------------------------------------
   // Aggregated KPI stats calculations
@@ -289,6 +314,24 @@ export const AccountsView = () => {
         </div>
       </div>
 
+      {/* Success Notification Banner */}
+      {successBanner && (
+        <div className="mb-6 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-400 text-sm font-semibold flex items-center justify-between gap-4 animate-slideDown">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="h-5 w-5 text-emerald-500 flex-shrink-0" />
+            <span>{successBanner.message}</span>
+          </div>
+          {successBanner.undoable && (
+            <button 
+              onClick={handleUndoImport}
+              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-black shadow-sm transition-colors"
+            >
+              Undo Import
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 2. Aggregate KPI Cards Grid (10 cards split into two rows for responsiveness and clarity) */}
       <div className="flex flex-col gap-4 mb-6">
         {/* Row A: Master Metrics & Statuses */}
@@ -353,6 +396,9 @@ export const AccountsView = () => {
         </div>
       </div>
 
+      {/* Import History Logs Auditing Panel */}
+      <ImportHistoryPanel history={importHistory} />
+
       {/* 3. Master Accounts Table */}
       <Card className="p-6">
         <h3 className="text-base font-black text-gray-900 dark:text-gray-150 uppercase tracking-wider mb-4 border-b border-gray-100 dark:border-gray-800 pb-2">
@@ -374,12 +420,14 @@ export const AccountsView = () => {
         account={selectedAccountObj}
         projects={selectedAccountProjects}
         filteredProjects={filteredDrawerProjects}
+        allProjects={projectsList}
         filters={drawerFilters}
         onFilterChange={setDrawerFilters}
         onResetFilters={() => setDrawerFilters(INITIAL_FILTERS)}
         onAddProject={handleAddProject}
         onEditProject={handleEditProject}
         onDeleteProject={handleOpenDeleteProjectConfirm}
+        onImportProjects={handleImportProjects}
         clientsList={accountsList}
       />
 

@@ -15,7 +15,7 @@ export const Loader = ({
   };
 
   const wrapperClasses = fullPage 
-    ? 'fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/70 dark:bg-brandDark/70 backdrop-blur-sm'
+    ? 'fixed inset-0 z-[200] flex flex-col items-center justify-center bg-white/70 dark:bg-brandDark/70 backdrop-blur-sm'
     : 'flex flex-col items-center justify-center p-8 w-full';
 
   return (

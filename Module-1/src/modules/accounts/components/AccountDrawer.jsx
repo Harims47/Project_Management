@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { X, Briefcase, Plus, FileSpreadsheet, FileText, CheckCircle, Play, AlertCircle, HelpCircle } from 'lucide-react';
+import { X, Briefcase, Plus, FileSpreadsheet, FileText, CheckCircle, Play, AlertCircle, HelpCircle, Download, Upload } from 'lucide-react';
 import AccountSummary from './AccountSummary';
 import ProjectFilters from './ProjectFilters';
 import ProjectTable from './ProjectTable';
 import ProjectCharts from './ProjectCharts';
 import ProjectForm from './ProjectForm';
+import ExcelUploadModal from './ExcelUploadModal';
 import { Button } from '../../../components/ui/Button';
+import { exportProjectsToExcel, downloadExcelTemplate } from '../utils/excel/excelExporter';
+import { exportProjectsToPdf } from '../utils/pdf/pdfExporter';
 
 export const AccountDrawer = ({
   isOpen,
@@ -13,16 +16,19 @@ export const AccountDrawer = ({
   account,
   projects = [], // All projects for this client
   filteredProjects = [], // Projects filtered by filters
+  allProjects = [], // All projects in system
   filters = {},
   onFilterChange,
   onResetFilters,
   onAddProject,
   onEditProject,
   onDeleteProject,
+  onImportProjects,
   clientsList = []
 }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
 
   if (!isOpen || !account) return null;
 
@@ -67,13 +73,17 @@ export const AccountDrawer = ({
     setIsFormOpen(true);
   };
 
-  // Mock Export triggers
+  // Export triggers
   const handleExportExcel = () => {
-    alert(`📊 Export Excel: Generating spreadsheet for "${account.name}" matching ${filteredProjects.length} filtered projects...`);
+    exportProjectsToExcel(filteredProjects, filters, account.name);
   };
 
   const handleExportPDF = () => {
-    alert(`📄 Export PDF: Generating report for "${account.name}" matching ${filteredProjects.length} filtered projects...`);
+    exportProjectsToPdf(filteredProjects, filters, account);
+  };
+
+  const handleDownloadTemplate = () => {
+    downloadExcelTemplate();
   };
 
   // Dynamically extract managers and statuses from projects array for dropdown filters
@@ -90,12 +100,12 @@ export const AccountDrawer = ({
     <>
       {/* Backdrop overlay */}
       <div 
-        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity"
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[110] transition-opacity"
         onClick={onClose}
       />
 
       {/* Slide-out Drawer Panel */}
-      <div className="fixed top-0 right-0 h-full w-[90vw] md:w-[80vw] lg:w-[70vw] xl:w-[60vw] z-50 bg-white dark:bg-brandDark-card shadow-2xl transition-transform duration-300 transform translate-x-0 overflow-y-auto border-l border-gray-200 dark:border-gray-800">
+      <div className="fixed top-0 right-0 h-full w-[90vw] md:w-[80vw] lg:w-[70vw] xl:w-[60vw] z-[120] bg-white dark:bg-brandDark-card shadow-2xl transition-transform duration-300 transform translate-x-0 overflow-y-auto border-l border-gray-200 dark:border-gray-800">
         
         {/* Drawer Header */}
         <div className="sticky top-0 z-10 bg-white/95 dark:bg-brandDark-card/95 backdrop-blur px-6 py-4 border-b border-gray-150 dark:border-gray-850 flex items-center justify-between">
@@ -274,7 +284,7 @@ export const AccountDrawer = ({
 
           {/* SECTION 5: Inline Actions Toolbar */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-850 pt-4">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -290,6 +300,22 @@ export const AccountDrawer = ({
                 onClick={handleExportPDF}
               >
                 Export PDF
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                icon={Download} 
+                onClick={handleDownloadTemplate}
+              >
+                Download Template
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                icon={Upload} 
+                onClick={() => setIsUploadOpen(true)}
+              >
+                Upload Excel
               </Button>
             </div>
             
@@ -323,6 +349,17 @@ export const AccountDrawer = ({
         onSubmit={editingProject ? (data) => onEditProject(editingProject.projectCode, data) : onAddProject}
         project={editingProject}
         clientsList={clientsList}
+        existingProjectsList={allProjects}
+      />
+
+      {/* Floating Excel Upload Dialog */}
+      <ExcelUploadModal 
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        existingProjects={allProjects}
+        onImportConfirm={(validRows, fileName, summary) => {
+          onImportProjects(validRows, fileName, summary);
+        }}
       />
     </>
   );

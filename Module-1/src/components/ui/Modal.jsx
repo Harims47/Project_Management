@@ -46,7 +46,7 @@ export const Modal = ({
     <ModalPortal>
       {/* Backdrop overlay */}
       <div 
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 transition-all duration-300"
+        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 transition-all duration-300"
         onClick={() => closeOnOverlayClick && onClose()}
       >
         {/* Modal Window Container */}

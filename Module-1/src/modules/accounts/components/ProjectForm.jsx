@@ -8,6 +8,7 @@ export const ProjectForm = ({
   onSubmit,
   project = null, // If set, we are editing
   clientsList = [],
+  existingProjectsList = [],
   servicesList = [
     { value: 'Creative', label: 'Creative Capabilities' },
     { value: 'Digital', label: 'Digital Web Solutions' },
@@ -69,15 +70,75 @@ export const ProjectForm = ({
 
   const validate = () => {
     const tempErrors = {};
-    if (!form.projectCode.trim()) tempErrors.projectCode = 'Project Code is required';
-    if (!form.projectName.trim()) tempErrors.projectName = 'Project Name is required';
+    
+    // Project Code Validation AAA-1234
+    if (!form.projectCode.trim()) {
+      tempErrors.projectCode = 'Project Code is required';
+    } else {
+      const codeStr = form.projectCode.trim().toUpperCase();
+      const codeRegex = /^[A-Z]+-[0-9]+$/;
+      
+      if (!codeRegex.test(codeStr)) {
+        let reason = 'Invalid format. Must be letters-numbers with exactly one hyphen (e.g. CR-1001).';
+        if (codeStr.includes(' ')) reason += ' No spaces allowed.';
+        tempErrors.projectCode = reason;
+      } else {
+        // Prefix matching
+        const prefix = codeStr.split('-')[0];
+        const prefixes = { Creative: 'CR', Digital: 'DG', Research: 'RS', Video: 'VD' };
+        const expectedPrefix = prefixes[form.service];
+        
+        if (expectedPrefix && prefix !== expectedPrefix) {
+          tempErrors.projectCode = `Code prefix "${prefix}" does not match Service Line "${form.service}" (expected prefix "${expectedPrefix}").`;
+        } else {
+          // Duplicate project code check
+          const isDuplicate = existingProjectsList.some(p => {
+            if (isEdit && p.projectCode.trim().toUpperCase() === project.projectCode.trim().toUpperCase()) {
+              return false; // exclude self when editing
+            }
+            return p.projectCode.trim().toUpperCase() === codeStr;
+          });
+          if (isDuplicate) {
+            tempErrors.projectCode = `Project Code "${codeStr}" already exists in the system.`;
+          }
+        }
+      }
+    }
+
+    // Project Name validation with bounds
+    if (!form.projectName.trim()) {
+      tempErrors.projectName = 'Project Name is required';
+    } else if (form.projectName.trim().length < 3) {
+      tempErrors.projectName = 'Project Name must be at least 3 characters long';
+    } else if (form.projectName.trim().length > 100) {
+      tempErrors.projectName = 'Project Name cannot exceed 100 characters';
+    }
+
     if (!form.clientId) tempErrors.clientId = 'Client Account is required';
     if (!form.manager.trim()) tempErrors.manager = 'Manager name is required';
-    if (!form.revenue || Number(form.revenue) <= 0) tempErrors.revenue = 'Revenue must be a positive number';
+    
+    // Numeric & positive revenue validation
+    if (form.revenue === undefined || form.revenue === null || String(form.revenue).trim() === '') {
+      tempErrors.revenue = 'Revenue is required';
+    } else {
+      const numVal = Number(form.revenue);
+      if (isNaN(numVal)) {
+        tempErrors.revenue = 'Revenue must be a numeric value';
+      } else if (numVal <= 0) {
+        tempErrors.revenue = 'Revenue must be greater than zero';
+      }
+    }
+
+    // Dates validations
     if (!form.startDate) tempErrors.startDate = 'Start Date is required';
     if (!form.endDate) tempErrors.endDate = 'End Date is required';
     if (form.startDate && form.endDate && form.startDate > form.endDate) {
-      tempErrors.endDate = 'End Date must be after Start Date';
+      tempErrors.endDate = 'End Date cannot be before Start Date';
+    }
+
+    // Remarks length validation
+    if (form.remarks && form.remarks.length > 500) {
+      tempErrors.remarks = 'Remarks cannot exceed 500 characters';
     }
 
     setErrors(tempErrors);
@@ -95,6 +156,7 @@ export const ProjectForm = ({
     onSubmit({
       id: project ? project.id : `proj-${Date.now()}`,
       ...form,
+      projectCode: form.projectCode.trim().toUpperCase(),
       revenue: Number(form.revenue),
       clientName
     });
