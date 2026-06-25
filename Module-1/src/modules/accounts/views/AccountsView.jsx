@@ -1,17 +1,19 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { Plus, Users, Briefcase, Activity, Calendar, Trophy, CheckCircle, Play, FileText, XCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Card, StatisticCard } from '../../../components/cards/DashboardCards';
 import { Button } from '../../../components/ui/Button';
 import { Modal, ConfirmationDialog } from '../../../components/ui/Modal';
+import { Loader } from '../../../components/feedback/FeedbackStates';
 
 // Reusable subcomponents
 import AccountsTable from '../components/AccountsTable';
 import AccountDrawer from '../components/AccountDrawer';
 import ImportHistoryPanel from '../components/ImportHistoryPanel';
 
-// Dummy JSON datasets
-import initialAccounts from '../data/accounts';
-import initialProjects from '../data/projects';
+// Redux Actions & Slices
+import { fetchAccounts, createAccount, updateAccount, deleteAccount } from '../../../store/accountsSlice';
+import { fetchFilteredProjects, createProject, updateProject, deleteProject, importProjects, clearLastImportedIds } from '../../../store/projectsSlice';
 
 // Utility helper routines
 import { filterProjects } from '../utils/helpers/filterUtils';
@@ -31,13 +33,17 @@ const INITIAL_FILTERS = {
 };
 
 export const AccountsView = () => {
-  // Master states
-  const [accountsList, setAccountsList] = useState(initialAccounts);
-  const [projectsList, setProjectsList] = useState(initialProjects);
+  const dispatch = useDispatch();
+
+  // Redux store selectors
+  const accountsList = useSelector(state => state.accounts.list);
+  const projectsList = useSelector(state => state.projects.list);
+  const accountsLoading = useSelector(state => state.accounts.loading);
+  const projectsLoading = useSelector(state => state.projects.loading);
+  const lastImportedProjectIds = useSelector(state => state.projects.lastImportedIds);
 
   // Phase 2: Import logs and undo buffers
   const [importHistory, setImportHistory] = useState([]);
-  const [lastImportedProjectIds, setLastImportedProjectIds] = useState(null);
   const [successBanner, setSuccessBanner] = useState(null);
 
   // Drawer states
@@ -55,7 +61,7 @@ export const AccountsView = () => {
   const [accountForm, setAccountForm] = useState({
     name: '',
     globalLead: '',
-    region: 'Global',
+    region: 'Global / NA',
     industry: 'Pharmaceuticals',
     country: '',
     website: '',
@@ -65,6 +71,12 @@ export const AccountsView = () => {
     contactEmail: ''
   });
   const [accountFormErrors, setAccountFormErrors] = useState({});
+
+  // Fetch initial data
+  useEffect(() => {
+    dispatch(fetchAccounts());
+    dispatch(fetchFilteredProjects());
+  }, [dispatch]);
 
   // -------------------------------------------------------------
   // Data Filtering Logic for Drawer
@@ -87,52 +99,58 @@ export const AccountsView = () => {
     // Map rows to schema objects
     const mapped = mapImportedRowsToSchema(validRows, selectedAccountId, selectedAccountObj, accountsList);
     
-    // Add to project list state
-    setProjectsList(prev => [...mapped, ...prev]);
+    // Dispatch import action to save to DB!
+    dispatch(importProjects(mapped))
+      .unwrap()
+      .then((payload) => {
+        // Add record to import history logger
+        const newLog = {
+          id: `log-${Date.now()}`,
+          fileName,
+          uploadedDate: new Date().toLocaleString(),
+          totalRecords: summary.totalRecords,
+          validRecords: summary.validRecords,
+          invalidRecords: summary.invalidRecords,
+          status: 'Success'
+        };
+        setImportHistory(prev => [newLog, ...prev]);
 
-    // Store IDs to allow undo action
-    const ids = mapped.map(p => p.id);
-    setLastImportedProjectIds(ids);
-
-    // Add record to import history logger
-    const newLog = {
-      id: `log-${Date.now()}`,
-      fileName,
-      uploadedDate: new Date().toLocaleString(),
-      totalRecords: summary.totalRecords,
-      validRecords: summary.validRecords,
-      invalidRecords: summary.invalidRecords,
-      status: 'Success'
-    };
-    setImportHistory(prev => [newLog, ...prev]);
-
-    // Render success banner
-    setSuccessBanner({
-      message: `Successfully imported ${validRows.length} project records from "${fileName}".`,
-      undoable: true
-    });
+        // Render success banner
+        setSuccessBanner({
+          message: `Successfully imported ${payload.results.length} project records from "${fileName}".`,
+          undoable: true
+        });
+      })
+      .catch((err) => {
+        alert(`Import failed: ${err}`);
+      });
   };
 
   // Undo Import Handler
   const handleUndoImport = () => {
     if (lastImportedProjectIds && lastImportedProjectIds.length > 0) {
-      setProjectsList(prev => prev.filter(p => !lastImportedProjectIds.includes(p.id)));
-      
-      // Update first history log status to Undone
-      setImportHistory(prev => 
-        prev.map((log, index) => index === 0 ? { ...log, status: 'Undone' } : log)
-      );
+      // Perform soft deletes on the backend
+      Promise.all(lastImportedProjectIds.map(id => dispatch(deleteProject(id)).unwrap()))
+        .then(() => {
+          // Update first history log status to Undone
+          setImportHistory(prev => 
+            prev.map((log, index) => index === 0 ? { ...log, status: 'Undone' } : log)
+          );
 
-      setLastImportedProjectIds(null);
-      setSuccessBanner({
-        message: 'Import operation rolled back. Projects removed from session state.',
-        undoable: false
-      });
+          dispatch(clearLastImportedIds());
+          setSuccessBanner({
+            message: 'Import operation rolled back. Projects removed from database.',
+            undoable: false
+          });
 
-      // Clear banner automatically after 3 seconds
-      setTimeout(() => {
-        setSuccessBanner(null);
-      }, 3000);
+          // Clear banner automatically after 3 seconds
+          setTimeout(() => {
+            setSuccessBanner(null);
+          }, 3000);
+        })
+        .catch(err => {
+          alert(`Undo failed: ${err}`);
+        });
     }
   };
 
@@ -188,7 +206,7 @@ export const AccountsView = () => {
     setAccountForm({
       name: '',
       globalLead: '',
-      region: 'Global',
+      region: 'Global / NA',
       industry: 'Pharmaceuticals',
       country: '',
       website: '',
@@ -205,7 +223,7 @@ export const AccountsView = () => {
     setAccountForm({
       name: account.name || '',
       globalLead: account.globalLead || '',
-      region: account.region || 'Global',
+      region: account.region || 'Global / NA',
       industry: account.industry || 'Pharmaceuticals',
       country: account.country || '',
       website: account.website || '',
@@ -236,22 +254,20 @@ export const AccountsView = () => {
 
     if (editingAccount) {
       // Edit Account
-      setAccountsList(prev => 
-        prev.map(acc => acc.id === editingAccount.id 
-          ? { ...acc, ...accountForm } 
-          : acc
-        )
-      );
-      setEditingAccount(null);
+      dispatch(updateAccount({ id: editingAccount.id, accountData: accountForm }))
+        .unwrap()
+        .then(() => {
+          setEditingAccount(null);
+        })
+        .catch(err => alert(`Failed to update account: ${err}`));
     } else {
       // Create Account
-      const newId = accountForm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      const newAccount = {
-        id: newId,
-        ...accountForm
-      };
-      setAccountsList(prev => [...prev, newAccount]);
-      setIsCreateAccountOpen(false);
+      dispatch(createAccount(accountForm))
+        .unwrap()
+        .then(() => {
+          setIsCreateAccountOpen(false);
+        })
+        .catch(err => alert(`Failed to create account: ${err}`));
     }
   };
 
@@ -264,10 +280,14 @@ export const AccountsView = () => {
 
   const handleDeleteAccountConfirm = () => {
     if (deletingAccount) {
-      setAccountsList(prev => prev.filter(acc => acc.id !== deletingAccount.id));
-      // Clean up linked projects
-      setProjectsList(prev => prev.filter(p => p.clientId !== deletingAccount.id));
-      setDeletingAccount(null);
+      dispatch(deleteAccount(deletingAccount.id))
+        .unwrap()
+        .then(() => {
+          // Refresh projects list since cascade soft-deletes affect projects
+          dispatch(fetchFilteredProjects());
+          setDeletingAccount(null);
+        })
+        .catch(err => alert(`Failed to delete account: ${err}`));
     }
   };
 
@@ -275,13 +295,18 @@ export const AccountsView = () => {
   // Projects CRUD Handlers
   // -------------------------------------------------------------
   const handleAddProject = (newProj) => {
-    setProjectsList(prev => [newProj, ...prev]);
+    dispatch(createProject(newProj))
+      .unwrap()
+      .catch(err => alert(`Failed to add project: ${err}`));
   };
 
   const handleEditProject = (projCode, updatedProj) => {
-    setProjectsList(prev => 
-      prev.map(p => p.projectCode === projCode ? { ...p, ...updatedProj } : p)
-    );
+    const proj = projectsList.find(p => p.projectCode === projCode);
+    if (proj) {
+      dispatch(updateProject({ id: proj.id, projectData: updatedProj }))
+        .unwrap()
+        .catch(err => alert(`Failed to update project: ${err}`));
+    }
   };
 
   const handleOpenDeleteProjectConfirm = (project) => {
@@ -290,10 +315,18 @@ export const AccountsView = () => {
 
   const handleDeleteProjectConfirm = () => {
     if (deletingProject) {
-      setProjectsList(prev => prev.filter(p => p.projectCode !== deletingProject.projectCode));
-      setDeletingProject(null);
+      dispatch(deleteProject(deletingProject.id))
+        .unwrap()
+        .then(() => {
+          setDeletingProject(null);
+        })
+        .catch(err => alert(`Failed to delete project: ${err}`));
     }
   };
+
+  if (accountsLoading && accountsList.length === 0) {
+    return <Loader message="Connecting to portfolio backend API..." />;
+  }
 
   return (
     <div className="page-container text-left select-none">
@@ -620,7 +653,7 @@ export const AccountsView = () => {
         onClose={() => setDeletingAccount(null)}
         onConfirm={handleDeleteAccountConfirm}
         title="Confirm Account Deletion"
-        message={deletingAccount ? `Are you sure you want to delete client account "${deletingAccount.name}"? This will permanently delete the account and all 48 linked capability projects from the in-memory state.` : ''}
+        message={deletingAccount ? `Are you sure you want to delete client account "${deletingAccount.name}"? This will permanently delete the account and all linked capability projects from the database.` : ''}
         confirmLabel="Delete Account"
         cancelLabel="Discard"
       />

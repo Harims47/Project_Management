@@ -1219,3 +1219,193 @@ export const TestimonialsView = () => {
     </div>
   );
 };
+
+// 10. Resource Utilization View
+export const ResourceUtilizationView = () => {
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const [deptFilter, setDeptFilter] = React.useState('All');
+
+  const resources = [
+    { name: 'Sarah Jenkins', role: 'Solutions Architect', allocation: 'Pfizer Inc. (80%), Novartis AG (20%)', utilization: 100, status: 'Optimal', department: 'Technology' },
+    { name: 'Alex Mercer', role: 'Lead Frontend Engineer', allocation: 'Novartis AG (100%)', utilization: 100, status: 'Optimal', department: 'Engineering' },
+    { name: 'Dave Patel', role: 'Senior Database Administrator', allocation: 'Johnson & Johnson (60%), Merck & Co. (20%)', utilization: 80, status: 'Optimal', department: 'Database' },
+    { name: 'Elena Rostova', role: 'Business Analyst', allocation: 'Roche Holding (90%)', utilization: 90, status: 'Optimal', department: 'Strategy' },
+    { name: 'David Vance', role: 'Creative Director', allocation: 'AstraZeneca (110%)', utilization: 110, status: 'Over-utilized', department: 'Creative' },
+    { name: 'Marcus Aurelius', role: 'QA Automation Engineer', allocation: 'Pfizer Inc. (40%)', utilization: 40, status: 'Under-utilized', department: 'Quality Assurance' },
+    { name: 'Priya Sharma', role: 'Regulatory Consultant', allocation: 'Merck & Co. (50%), Pfizer Inc. (50%)', utilization: 100, status: 'Optimal', department: 'Regulatory' }
+  ];
+
+  const uniqueDepts = ['All', ...new Set(resources.map(r => r.department))];
+
+  const filteredResources = resources.filter(r => {
+    const matchesSearch = r.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          r.role.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesDept = deptFilter === 'All' || r.department === deptFilter;
+    return matchesSearch && matchesDept;
+  });
+
+  const totalHeadcount = resources.length;
+  const avgUtilization = Math.round(resources.reduce((acc, r) => acc + r.utilization, 0) / totalHeadcount);
+  const overUtilizedCount = resources.filter(r => r.utilization > 100).length;
+  const underUtilizedCount = resources.filter(r => r.utilization < 70).length;
+
+  return (
+    <div className="page-container">
+      <PageHeader 
+        title="Resource Utilization & Capacity" 
+        subtitle="Manage delivery headcount workloads, capability allocation ratios, and operational efficiency." 
+      />
+
+      {/* Filter and Search Bar */}
+      <div className="filter-bar" style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '24px', alignItems: 'center' }}>
+        <div className="filter-group" style={{ flex: 1, minWidth: '240px' }}>
+          <label htmlFor="resource-search">Search Staff</label>
+          <input
+            id="resource-search"
+            type="text"
+            placeholder="Search by name or role..."
+            className="filter-select"
+            style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--border-radius-sm)', border: '1px solid var(--border-color)', background: 'var(--bg-app)', color: 'var(--text-primary)' }}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        <div className="filter-group" style={{ minWidth: '180px' }}>
+          <label htmlFor="dept-filter">Department</label>
+          <select
+            id="dept-filter"
+            className="filter-select"
+            style={{ width: '100%' }}
+            value={deptFilter}
+            onChange={(e) => setDeptFilter(e.target.value)}
+          >
+            {uniqueDepts.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+
+        <div className="filter-actions" style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+          {(searchTerm !== '' || deptFilter !== 'All') && (
+            <button 
+              className="btn btn-outline" 
+              onClick={() => { setSearchTerm(''); setDeptFilter('All'); }}
+              style={{ padding: '8px 16px' }}
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* KPI Cards Grid */}
+      <div className="stats-grid" style={{ marginBottom: '24px' }}>
+        <div className="card accent-border-top-primary">
+          <div className="stat-card-header">
+            <span className="stat-card-title">Staff Headcount</span>
+            <div className="stat-card-icon-wrapper icon-blue">
+              <Users size={20} />
+            </div>
+          </div>
+          <div className="stat-card-value">{totalHeadcount}</div>
+          <div className="stat-card-footer">
+            <span style={{ color: 'var(--text-muted)' }}>active specialists</span>
+          </div>
+        </div>
+
+        <div className="card accent-border-top-secondary">
+          <div className="stat-card-header">
+            <span className="stat-card-title">Avg Utilization Rate</span>
+            <div className="stat-card-icon-wrapper icon-cyan">
+              <Clock size={20} />
+            </div>
+          </div>
+          <div className="stat-card-value">{avgUtilization}%</div>
+          <div className="stat-card-footer">
+            <span className="badge badge-success" style={{ padding: '2px 8px', fontSize: '10px' }}>
+              Target: 85%
+            </span>
+          </div>
+        </div>
+
+        <div className="card accent-border-top-pink">
+          <div className="stat-card-header">
+            <span className="stat-card-title">Capacity Status Alert</span>
+            <div className="stat-card-icon-wrapper icon-pink">
+              <UserCheck size={20} />
+            </div>
+          </div>
+          <div className="stat-card-value">
+            {overUtilizedCount + underUtilizedCount > 0 ? `${overUtilizedCount} Over / ${underUtilizedCount} Under` : 'Optimal'}
+          </div>
+          <div className="stat-card-footer">
+            <span style={{ color: 'var(--text-muted)' }}>attention required</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Resources Table Card */}
+      <div className="card">
+        <div style={{ marginBottom: '20px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: '700' }}>Operational Staff Allocation Ledger</h2>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Real-time workload tracker by capability offering</p>
+        </div>
+
+        <div className="table-container">
+          <table className="custom-table">
+            <thead>
+              <tr>
+                <th>Resource Name</th>
+                <th>Core Role</th>
+                <th>Department</th>
+                <th>Active Project Allocations</th>
+                <th>Utilization (%)</th>
+                <th>Workload Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredResources.map((res, idx) => (
+                <tr key={idx}>
+                  <td style={{ fontWeight: '600', color: 'var(--primary)' }}>{res.name}</td>
+                  <td>{res.role}</td>
+                  <td>
+                    <span className="badge badge-primary" style={{ opacity: 0.85 }}>{res.department}</span>
+                  </td>
+                  <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{res.allocation}</td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ flex: 1, height: '6px', width: '80px', backgroundColor: 'var(--border-color)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ 
+                          width: `${Math.min(res.utilization, 100)}%`, 
+                          height: '100%', 
+                          backgroundColor: res.utilization > 100 ? '#ef4444' : res.utilization < 70 ? '#f59e0b' : '#10b981', 
+                          borderRadius: '3px' 
+                        }}></div>
+                      </div>
+                      <span style={{ fontSize: '12px', fontWeight: '600' }}>{res.utilization}%</span>
+                    </div>
+                  </td>
+                  <td>
+                    <span className={`badge ${
+                      res.status === 'Optimal' ? 'badge-success' : 
+                      res.status === 'Over-utilized' ? 'badge-danger' : 'badge-warning'
+                    }`}>
+                      {res.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {filteredResources.length === 0 && (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)' }}>
+                    No resource records match the search criteria.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+

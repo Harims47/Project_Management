@@ -22,7 +22,8 @@ import {
   EventsView,
   AchievementsView,
   EscalationsView,
-  TestimonialsView
+  TestimonialsView,
+  ResourceUtilizationView
 } from '../components/Pages';
 
 export const AppRoutes = () => {
@@ -55,6 +56,7 @@ export const AppRoutes = () => {
         <Route path="/achievements" element={<AchievementsView />} />
         <Route path="/escalations" element={<EscalationsView />} />
         <Route path="/testimonials" element={<TestimonialsView />} />
+        <Route path="/resource-utilization" element={<ResourceUtilizationView />} />
       </Route>
 
       {/* Wildcard redirects */}

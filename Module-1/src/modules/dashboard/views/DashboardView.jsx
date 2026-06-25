@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import { 
   Users, 
   Briefcase, 
@@ -15,45 +16,103 @@ import {
   Plus
 } from 'lucide-react';
 
-import dashboardService from '../services/dashboardService';
 import { Button } from '../../../components/ui/Button';
 import { Card, StatisticCard, KPICard } from '../../../components/cards/DashboardCards';
 import { LineChart, PieChart } from '../../../components/charts/DashboardCharts';
 import { Loader, ErrorState, EmptyState } from '../../../components/feedback/FeedbackStates';
+import apiClient from '../../../api/client';
+
+// Redux Actions
+import { fetchAccounts } from '../../../store/accountsSlice';
+import { fetchFilteredProjects } from '../../../store/projectsSlice';
+import { 
+  fetchDashboardSummary, 
+  fetchServiceDistribution, 
+  fetchStatusDistribution, 
+  fetchMonthlyTrend, 
+  fetchRevenueAnalytics, 
+  fetchManagerWorkload, 
+  fetchTopAccounts 
+} from '../../../store/dashboardSlice';
 
 export const DashboardView = () => {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
 
   // Filter States
   const [accountFilter, setAccountFilter] = useState('all');
   const [projectFilter, setProjectFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
   
-  // Data State
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [metrics, setMetrics] = useState(null);
+  // Cache filters trigger to avoid duplicate requests
+  const [lastFiltersKey, setLastFiltersKey] = useState(null);
 
-  const fetchMetrics = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await dashboardService.getSummaryMetrics({
-        accountFilter,
-        projectFilter,
-        serviceFilter
-      });
-      setMetrics(data);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Redux Selectors
+  const accountsList = useSelector(state => state.accounts.list);
+  const accountsLoading = useSelector(state => state.accounts.loading);
+  
+  const projectsList = useSelector(state => state.projects.list);
+  
+  const summary = useSelector(state => state.dashboard.summary);
+  const services = useSelector(state => state.dashboard.services);
+  const statuses = useSelector(state => state.dashboard.statuses);
+  const revenue = useSelector(state => state.dashboard.revenue);
+  const monthlyTrend = useSelector(state => state.dashboard.monthlyTrend);
+  const managerWorkload = useSelector(state => state.dashboard.managerWorkload);
+  const topAccounts = useSelector(state => state.dashboard.topAccounts);
+  
+  const dashboardLoading = useSelector(state => state.dashboard.loading);
+  const dashboardError = useSelector(state => state.dashboard.error);
 
+  // Mocks local states for Escalations, Events, and Achievements
+  const [escalations, setEscalations] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [achievements, setAchievements] = useState([]);
+
+  // Load static data and list dependencies
   useEffect(() => {
-    fetchMetrics();
-  }, [accountFilter, projectFilter, serviceFilter]);
+    dispatch(fetchAccounts());
+    dispatch(fetchFilteredProjects());
+    
+    const fetchMocks = async () => {
+      const [esc, evt, ach] = await Promise.all([
+        apiClient.get('escalations'),
+        apiClient.get('events'),
+        apiClient.get('achievements')
+      ]);
+      setEscalations(esc);
+      setEvents(evt);
+      setAchievements(ach);
+    };
+    fetchMocks();
+  }, [dispatch]);
+
+  // Load and cache backend dashboard aggregations
+  useEffect(() => {
+    let srvName = '';
+    if (serviceFilter === 'commercialization') srvName = 'Creative';
+    else if (serviceFilter === 'regulatory') srvName = 'Digital';
+    else if (serviceFilter === 'clinical') srvName = 'Research';
+    else if (serviceFilter === 'analytics') srvName = 'Video';
+
+    const filtersKey = `${accountFilter}_${srvName}`;
+    if (lastFiltersKey === filtersKey) return; // cache hit
+
+    setLastFiltersKey(filtersKey);
+
+    const filters = {
+      client: accountFilter === 'all' ? '' : accountFilter,
+      service: srvName
+    };
+
+    dispatch(fetchDashboardSummary(filters));
+    dispatch(fetchServiceDistribution(filters));
+    dispatch(fetchStatusDistribution(filters));
+    dispatch(fetchMonthlyTrend(filters));
+    dispatch(fetchRevenueAnalytics(filters));
+    dispatch(fetchManagerWorkload(filters));
+    dispatch(fetchTopAccounts(filters));
+  }, [dispatch, accountFilter, serviceFilter, lastFiltersKey]);
 
   const handleResetFilters = () => {
     setAccountFilter('all');
@@ -61,36 +120,66 @@ export const DashboardView = () => {
     setServiceFilter('all');
   };
 
-  if (loading && !metrics) {
+  const retryFetchMetrics = () => {
+    setLastFiltersKey(null); // invalidate cache key to trigger reload
+  };
+
+  // Filter local mocks by accountFilter
+  const filteredEscalations = useMemo(() => {
+    return escalations.filter(e => accountFilter === 'all' || e.accountId === accountFilter);
+  }, [escalations, accountFilter]);
+
+  const filteredEvents = useMemo(() => {
+    return events.filter(ev => accountFilter === 'all' || ev.accountId === accountFilter);
+  }, [events, accountFilter]);
+
+  const filteredAchievements = useMemo(() => {
+    return achievements.filter(a => accountFilter === 'all' || a.accountId === accountFilter);
+  }, [achievements, accountFilter]);
+
+  // Compute filtered projects dropdown options locally
+  const filteredProjects = useMemo(() => {
+    let srvName = '';
+    if (serviceFilter === 'commercialization') srvName = 'Creative';
+    else if (serviceFilter === 'regulatory') srvName = 'Digital';
+    else if (serviceFilter === 'clinical') srvName = 'Research';
+    else if (serviceFilter === 'analytics') srvName = 'Video';
+
+    return projectsList.filter(p => {
+      const matchAccount = accountFilter === 'all' || p.clientId === accountFilter;
+      const matchService = serviceFilter === 'all' || p.service === srvName;
+      return matchAccount && matchService;
+    });
+  }, [projectsList, accountFilter, serviceFilter]);
+
+  if ((dashboardLoading || accountsLoading) && !summary) {
     return <Loader message="Analyzing client portfolio metrics..." fullPage={false} />;
   }
 
-  if (error) {
-    return <ErrorState error={error} onRetry={fetchMetrics} />;
+  if (dashboardError) {
+    return <ErrorState error={dashboardError} onRetry={retryFetchMetrics} />;
   }
 
-  const {
-    activeProjectsCount,
-    onTrackCount,
-    atRiskCount,
-    blockedCount,
-    totalRevenueVal,
-    avgHealthScore,
-    serviceRevenues,
-    trendData,
-    filteredProjects,
-    filteredEscalations,
-    filteredEvents,
-    filteredAchievements,
-    accountsList
-  } = metrics;
+  if (!summary) {
+    return <EmptyState title="No metrics available" description="Make sure the backend database connection is running." />;
+  }
 
-  // Format total revenue label
+  // Formatting revenue totals
+  const totalRevenueVal = summary.totalRevenue;
   const totalRevenue = totalRevenueVal >= 1000000 
     ? `$${(totalRevenueVal / 1000000).toFixed(2)}M` 
     : `$${(totalRevenueVal / 1000).toFixed(0)}K`;
 
-  // Segment allocations for donut chart
+  const activeProjectsCount = summary.activeProjects;
+  const onTrackCount = summary.completedProjects + summary.ongoingProjects;
+  const atRiskCount = summary.pipelineProjects;
+  const blockedCount = summary.cancelledProjects;
+
+  const avgHealthScore = summary.totalProjects > 0
+    ? Math.round((onTrackCount / summary.totalProjects) * 100)
+    : 100;
+
+  // Segment allocations for donut chart (Operational Status Health)
   const healthData = [
     { name: 'On Track', value: onTrackCount },
     { name: 'At Risk', value: atRiskCount },
@@ -98,6 +187,27 @@ export const DashboardView = () => {
   ].filter(h => h.value > 0);
 
   const healthColors = ['#10b981', '#f59e0b', '#EC008C'];
+
+  // Map service analytics list for Recharts bars
+  const serviceRevenues = services.map((s, idx) => {
+    let title = s.serviceName;
+    if (title === 'Creative') title = 'Commercialization & Brand Launch';
+    else if (title === 'Digital') title = 'Regulatory Operations & Submissions';
+    else if (title === 'Research') title = 'Clinical Trials Tech Enablement';
+    else if (title === 'Video') title = 'Omnichannel Data & Analytics';
+
+    return {
+      id: s.serviceName.toLowerCase(),
+      name: title,
+      value: s.revenue
+    };
+  });
+
+  // Monthly trends mapped to line charts
+  const trendData = monthlyTrend.map(t => ({
+    name: t.month,
+    revenue: Number(t.revenue) / 1000 // In thousands ($K)
+  }));
 
   return (
     <div className="page-container">
@@ -132,7 +242,7 @@ export const DashboardView = () => {
               }}
               className="w-full py-2 px-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 text-sm text-gray-800 dark:text-gray-200 outline-none cursor-pointer"
             >
-              <option value="all">All Accounts (6)</option>
+              <option value="all">All Accounts ({accountsList.length})</option>
               {accountsList.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
             </select>
           </div>
@@ -146,7 +256,7 @@ export const DashboardView = () => {
               className="w-full py-2 px-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 text-sm text-gray-800 dark:text-gray-200 outline-none cursor-pointer"
             >
               <option value="all">All Projects</option>
-              {filteredProjects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+              {filteredProjects.map(p => <option key={p.id} value={p.id}>{p.projectName || p.title}</option>)}
             </select>
           </div>
 
@@ -284,7 +394,7 @@ export const DashboardView = () => {
                   height={200}
                 />
                 <div className="absolute top-[38%] left-1/2 transform -translate-x-1/2 text-center">
-                  <span className="text-2xl font-black text-gray-900 dark:text-gray-100">{onTrackCount} / {activeProjectsCount}</span>
+                  <span className="text-2xl font-black text-gray-900 dark:text-gray-100">{onTrackCount} / {summary.totalProjects}</span>
                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">On Track</p>
                 </div>
               </div>
@@ -293,7 +403,7 @@ export const DashboardView = () => {
             )}
           </Card>
 
-          {/* Escalations timeline */}
+          {/* Escalations summary */}
           <Card>
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Escalation Summary</h2>

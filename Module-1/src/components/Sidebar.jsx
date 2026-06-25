@@ -35,6 +35,7 @@ const Sidebar = ({
     // { id: 'revenue', label: 'Revenue', icon: DollarSign, path: '/revenue' },
     // { id: 'events', label: 'Events', icon: Calendar, path: '/events' },
     // { id: 'achievements', label: 'Achievements', icon: Trophy, path: '/achievements' },
+    { id: 'resource-utilization', label: 'Resource Utilization', icon: Layers, path: '/resource-utilization' },
     { id: 'escalations', label: 'Escalations', icon: AlertOctagon, path: '/escalations' },
     { id: 'testimonials', label: 'Testimonials', icon: MessageSquare, path: '/testimonials' }
   ];
